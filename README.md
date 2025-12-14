@@ -1,5 +1,5 @@
 # FAMS-DNN
-1.Install
+# Installation
 
 
 conda create -n FAMS-DNN python=3.10
