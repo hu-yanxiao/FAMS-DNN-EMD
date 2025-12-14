@@ -1,4 +1,6 @@
 # FAMS-DNN
+Forward Analytical Material-Specific Deep Neural Network  (FAMS-DNN) via a Property-field-based Hopfield Framework: the Material-Specific Deep Neural Network, which is Forward-Analytically deduced from a physically rational material property field (MPF) under the Hopfield framework.
+
 # Installation
 
 
