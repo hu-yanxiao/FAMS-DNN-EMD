@@ -25,11 +25,16 @@ from .myblocks import (
     ScaleShiftBlock,
 )
 from .utils import (
+
+
+    compute_dielectric_gradients,
     compute_fixed_charge_dipole,
-    compute_forces,
+    compute_fixed_charge_dipole_polar,
+    get_atomic_virials_stresses,
     get_edge_vectors_and_lengths,
     get_outputs,
     get_symmetric_displacement,
+    prepare_graph,
 )
 
 # pylint: disable=C0302
@@ -183,6 +188,9 @@ class FAMS_DNN(torch.nn.Module):
             compute_virials: bool = False,
             compute_stress: bool = False,
             compute_displacement: bool = False,
+            compute_hessian: bool = False,
+            compute_edge_forces: bool = False,
+            compute_atomic_stresses: bool = False
     ) -> Dict[str, Optional[torch.Tensor]]:
         # Setup
         data["positions"].requires_grad_(True)
@@ -260,16 +268,33 @@ class FAMS_DNN(torch.nn.Module):
         total_energy = e0 + inter_e
         node_energy = node_e0 + node_inter_es
 
-        forces, virials, stress = get_outputs(
-            energy=inter_e,
+        forces, virials, stress, hessian, edge_forces = get_outputs(
+            energy=total_energy,
             positions=data["positions"],
             displacement=displacement,
+            vectors=vectors,
             cell=data["cell"],
             training=training,
             compute_force=compute_force,
             compute_virials=compute_virials,
             compute_stress=compute_stress,
+            compute_hessian=compute_hessian,
+            compute_edge_forces=compute_edge_forces,
         )
+        atomic_virials: Optional[torch.Tensor] = None
+        atomic_stresses: Optional[torch.Tensor] = None
+        if compute_atomic_stresses and edge_forces is not None:
+            atomic_virials, atomic_stresses = get_atomic_virials_stresses(
+                edge_forces=edge_forces,
+                edge_index=data["edge_index"],
+                vectors=vectors,
+                num_atoms=positions.shape[0],
+                batch=data["batch"],
+                cell=cell,
+            )
+
+
+    
         output = {
             "e0": e0,  ## add by shenye
             "node_e0": node_e0,  ## add by shengye
@@ -280,6 +305,9 @@ class FAMS_DNN(torch.nn.Module):
             "forces": forces,
             "virials": virials,
             "stress": stress,
+            "atomic_virials": atomic_virials,
+            "atomic_stresses": atomic_stresses,
+            "hessian": hessian,
             "displacement": displacement,
             "node_feats": node_feats_out,
         }
