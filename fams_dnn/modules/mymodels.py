@@ -310,6 +310,7 @@ class FAMS_DNN(torch.nn.Module):
             "hessian": hessian,
             "displacement": displacement,
             "node_feats": node_feats_out,
+            "vectors":vectors,
         }
         return output
 
