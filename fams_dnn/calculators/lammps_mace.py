@@ -45,8 +45,11 @@ class LAMMPS_MACE(torch.nn.Module):
             }
         positions = data["positions"]
         displacement = out["displacement"]
+        vectors=out["vectors"]
         forces: Optional[torch.Tensor] = torch.zeros_like(positions)
         virials: Optional[torch.Tensor] = torch.zeros_like(data["cell"])
+        atom_virial: Optional[torch.Tensor] = None
+        edge_forces:Optional[torch.Tensor] = None
         # accumulate energies of local atoms
         node_energy_local = node_energy * local_or_ghost
         total_energy_local = scatter_sum(
@@ -57,9 +60,9 @@ class LAMMPS_MACE(torch.nn.Module):
             torch.ones_like(total_energy_local)
         ]
         if compute_virials and displacement is not None:
-            forces, virials = torch.autograd.grad(
+            forces, edge_forces = torch.autograd.grad(
                 outputs=[total_energy_local],
-                inputs=[positions, displacement],
+                inputs=[positions, vectors],
                 grad_outputs=grad_outputs,
                 retain_graph=False,
                 create_graph=False,
@@ -69,10 +72,9 @@ class LAMMPS_MACE(torch.nn.Module):
                 forces = -1 * forces
             else:
                 forces = torch.zeros_like(positions)
-            if virials is not None:
-                virials = -1 * virials
-            else:
-                virials = torch.zeros_like(displacement)
+            if edge_forces is not None:
+                edge_forces = -1 * edge_forces 
+
         else:
             forces = torch.autograd.grad(
                 outputs=[total_energy_local],
@@ -86,9 +88,23 @@ class LAMMPS_MACE(torch.nn.Module):
                 forces = -1 * forces
             else:
                 forces = torch.zeros_like(positions)
+        edge_index=data["edge_index"]
+        edge_virial = torch.einsum("zi,zj->zij", edge_forces, vectors)
+        atom_virial_sender = scatter_sum(
+        src=edge_virial, index=edge_index[0], dim=0, dim_size=num_atoms
+        )
+        atom_virial_receiver = scatter_sum(
+        src=edge_virial, index=edge_index[1], dim=0, dim_size=num_atoms
+        )
+        atom_virial = (atom_virial_sender + atom_virial_receiver) / 2
+        atom_virial = (atom_virial + atom_virial.transpose(-1, -2)) / 2
+        atom_virial*=-1
+        virials = atom_virial.sum(dim=0)
+        
         return {
             "total_energy_local": total_energy_local,
             "node_energy": node_energy,
             "forces": forces,
             "virials": virials,
+            "atomic_vairals":atom_virial,
         }
